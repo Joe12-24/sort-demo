@@ -1,214 +1,95 @@
 <template>
   <div class="container">
-    
-    <div class="box">
-      <h3>1. Element Plus (默认 sortable)</h3>
-      <div class="tip error">
-        <strong>问题暴露：</strong><br>
-        仅添加 <code>sortable</code>。<br>
-        它是按字符串比对 ("1.16" vs "低风险")。<br>
-        如果是"10.00"和"2.00"，它会把10排在2前面。
-      </div>
-      
-      <el-table :data="tableData" border style="width: 100%">
-        <el-table-column label="产品" min-width="120">
-          <template #default="scope">
-            <div class="prod-name">{{ scope.row.prodName }}</div>
-          </template>
-        </el-table-column>
+    <h2>场景复现与对比</h2>
 
-        <el-table-column 
-          label="收益率/状态" 
-          prop="rate" 
-          sortable 
-          align="center"
-          min-width="140">
+    <div class="box">
+      <h3>1. Element 默认 sortable (字符串陷阱)</h3>
+      <div class="desc error">
+        <strong>现象：</strong> 10.00% 竟然比 2.00% 小？<br>
+        <strong>原因：</strong> 它是按字符编码比对。字符 '1' < '2'。
+      </div>
+      <el-table :data="tableData" border>
+        <el-table-column prop="name" label="产品" width="100"></el-table-column>
+        <el-table-column prop="rate" label="收益率" sortable width="150">
           <template #default="scope">
-            <div class="rate-main" :class="{'is-text': isNaN(parseFloat(scope.row.rate))}">
-              {{ scope.row.rate }}{{ scope.row.ratePostfix }}
-            </div>
-            <span class="rate-sub">{{ scope.row.rateLabel }}</span>
+             <span class="red-text">{{ scope.row.rate }}</span>
           </template>
         </el-table-column>
       </el-table>
     </div>
 
     <div class="box">
-      <h3>2. Element Plus (+ sort-method)</h3>
-      <div class="tip success">
-        <strong>完美解决：</strong><br>
-        使用 <code>sort-method</code>。<br>
-        提取数值，中文转为 -9999。<br>
-        回归数学大小排序。
+      <h3>2. 截图中的错误写法 (NaN 失效)</h3>
+      <div class="desc error">
+        <strong>现象：</strong> 点击排序无反应，或者随机乱序。<br>
+        <strong>原因：</strong> <code>"1.00%" - "2.00%" = NaN</code>。<br>
+        JS无法对含%或中文的字符串做减法，排序彻底崩溃。
       </div>
-      
-      <el-table :data="tableData" border style="width: 100%">
-        <el-table-column label="产品" min-width="120">
-          <template #default="scope">
-             <div class="prod-name">{{ scope.row.prodName }}</div>
-             <div class="tags">
-               <span v-if="scope.row.rate === '低风险'" class="tag low-risk">R1</span>
-             </div>
-          </template>
-        </el-table-column>
-
+      <el-table :data="tableData" border>
+        <el-table-column prop="name" label="产品" width="100"></el-table-column>
         <el-table-column 
-          label="收益率/状态" 
           prop="rate" 
+          label="收益率" 
           sortable 
-          :sort-method="handleSort" 
-          align="center"
-          min-width="140">
+          :sort-method="brokenSort"
+          width="150">
           <template #default="scope">
-            <div class="rate-main" :class="{'is-text': isNaN(parseFloat(scope.row.rate))}">
-              {{ scope.row.rate }}{{ scope.row.ratePostfix }}
-            </div>
-            <span class="rate-sub">{{ scope.row.rateLabel }}</span>
+             <span class="red-text">{{ scope.row.rate }}</span>
           </template>
         </el-table-column>
       </el-table>
     </div>
 
     <div class="box">
-      <h3>3. Layui (字段分离)</h3>
-      <div class="tip info">
-        <strong>Layui 策略：</strong><br>
-        排序字段：<code>_sort_score</code> (数字)<br>
-        显示模版：<code>templet</code> (HTML)
+      <h3>3. 模拟 Layui 原理 (字段分离)</h3>
+      <div class="desc success">
+        <strong>现象：</strong> 排序完美。<br>
+        <strong>原因：</strong> 排序用的是背后的数字，显示用的是字符串。
       </div>
-      <table id="layuiTable"></table>
+      <el-table :data="tableData" border>
+        <el-table-column prop="name" label="产品" width="100"></el-table-column>
+        <el-table-column 
+          prop="rawRate" 
+          label="收益率" 
+          sortable 
+          width="150">
+          <template #default="scope">
+             <span class="red-text">{{ scope.row.rate }}</span>
+             <div style="font-size:10px;color:#999">(实际排序值: {{scope.row.rawRate}})</div>
+          </template>
+        </el-table-column>
+      </el-table>
     </div>
 
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import 'layui/dist/layui.js'; 
-import 'layui/dist/css/layui.css';
+import { ref } from 'vue';
 
-// ==========================================
-// 1. 数据源 (基于你提供的真实 JSON)
-// ==========================================
-const apiResponse = [
-  {
-    "itemCode": "lm003401",
-    "prodCode": "XN0030",
-    "prodName": "现金宝",
-    "riskType": "1",
-    "rateLabel": "七日年化收益率",
-    "rate": "1.16",
-    "ratePostfix": "%"
-  },
-  {
-    "itemCode": "lm003401",
-    "prodCode": "952100",
-    "prodName": "国泰海通现金管家",
-    "riskType": "1",
-    "rateLabel": "风险等级",
-    "rate": "低风险", 
-    "ratePostfix": ""
-  },
-  {
-    "itemCode": "lm003401",
-    "prodCode": "XN0001",
-    "prodName": "天汇宝1号",
-    "riskType": "1",
-    "rateLabel": "约定年化收益率",
-    "rate": "1.00", 
-    "ratePostfix": "%"
-  },
-  // 我故意加了一条 10.00% 的数据，为了演示默认排序的 BUG
-  {
-    "itemCode": "TEST_HIGH",
-    "prodCode": "TEST001",
-    "prodName": "高息测试产品(10%)",
-    "riskType": "2",
-    "rateLabel": "模拟高收益",
-    "rate": "10.00", 
-    "ratePostfix": "%"
-  }
-];
+// 模拟脏数据
+const tableData = ref([
+  { name: '产品A', rate: '1.00%', rawRate: 1.00 },
+  { name: '产品B', rate: '10.00%', rawRate: 10.00 }, // 陷阱：字符串排序时 10 < 2
+  { name: '产品C', rate: '2.50%', rawRate: 2.50 },
+  { name: '产品D', rate: '低风险', rawRate: -999 }   // 陷阱：中文无法相减
+]);
 
-const tableData = ref(apiResponse);
-
-// ==========================================
-// 2. 核心算法：提取排序分值
-// ==========================================
-const getSortScore = (row) => {
-  const val = row.rate;
-  // A. 中文沉底策略
-  if (['低风险', '中风险', '高风险'].includes(val)) {
-    return -9999; 
-  }
-  // B. 转数字
-  const num = parseFloat(val);
-  return isNaN(num) ? -9999 : num;
+// 模拟你截图中的错误逻辑
+const brokenSort = (a, b) => {
+  // 截图逻辑：(a.rate) - (b.rate)
+  // 真实情况： "1.00%" - "2.50%" = NaN (Not a Number)
+  // 返回 NaN 会导致浏览器排序算法失效
+  return a.rate - b.rate; 
 };
-
-// Element Plus 自定义排序
-const handleSort = (a, b) => {
-  return getSortScore(a) - getSortScore(b);
-};
-
-// ==========================================
-// 3. Layui 初始化
-// ==========================================
-onMounted(() => {
-  const layui = window.layui;
-  
-  // 预处理数据
-  const layuiData = apiResponse.map(item => ({
-    ...item,
-    _sort_score: getSortScore(item)
-  }));
-
-  layui.use(['table'], function(){
-    const table = layui.table;
-    table.render({
-      elem: '#layuiTable',
-      data: layuiData,
-      page: false, 
-      cols: [[
-        { field: 'prodName', title: '产品名称', minWidth: 120 },
-        { 
-          field: '_sort_score', // 排序用这个
-          title: '收益率/状态', 
-          sort: true, 
-          align: 'center',
-          minWidth: 140,
-          templet: function(d) {
-            // 显示用这个
-            const isText = isNaN(parseFloat(d.rate));
-            const colorClass = isText ? 'is-text' : '';
-            return `
-              <div class="rate-main ${colorClass}">
-                ${d.rate}${d.ratePostfix || ''}
-              </div>
-              <span class="rate-sub">${d.rateLabel}</span>
-            `;
-          }
-        }
-      ]]
-    });
-  });
-});
 </script>
 
 <style scoped>
-.container { display: flex; gap: 20px; padding: 20px; background: #f5f7fa; min-height: 100vh; overflow-x: auto;}
-.box { flex: 0 0 380px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); }
-
-h3 { margin-bottom: 15px; border-left: 4px solid #e60012; padding-left: 10px; font-size: 16px; color: #333; }
-.tip { padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 12px; line-height: 1.6; border: 1px solid #ddd;}
-.tip.error { background: #fff0f0; border-color: #ffcccc; color: #f56c6c; }
-.tip.success { background: #f0f9eb; border-color: #e1f3d8; color: #67c23a; }
-.tip.info { background: #e6f7ff; border-color: #91d5ff; color: #1890ff; }
-
-.prod-name { font-size: 14px; font-weight: bold; color: #333; }
-.rate-main { font-size: 18px; font-weight: bold; color: #f56c6c; }
-.rate-main.is-text { font-size: 14px; color: #606266; font-weight: normal; }
-.rate-sub { font-size: 12px; color: #909399; display: block; margin-top: 4px; }
-.tags { margin-top: 4px; }
-.tag { font-size: 10px; padding: 1px 4px; border-radius: 2px; border: 1px solid #ddd; color: #999; }
+.container { display: flex; gap: 20px; padding: 20px; background: #f5f7fa;}
+.box { flex: 1; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+h3 { margin-bottom: 10px; font-size: 16px; border-left: 4px solid #409EFF; padding-left: 10px; }
+.desc { padding: 8px; font-size: 12px; margin-bottom: 10px; border-radius: 4px; line-height: 1.5; }
+.desc.error { background: #fef0f0; color: #f56c6c; }
+.desc.success { background: #f0f9eb; color: #67c23a; }
+.red-text { color: #f56c6c; font-weight: bold; font-size: 16px; }
 </style>
